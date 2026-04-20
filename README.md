@@ -1,5 +1,7 @@
 # TwinMind - Live Suggestions
 
+**Live Demo:** [https://twin-mind-alpha.vercel.app/](https://twin-mind-alpha.vercel.app/)
+
 An AI-powered meeting copilot that provides real-time transcription and intelligent suggestions during live conversations.
 
 ## 🚀 Features
