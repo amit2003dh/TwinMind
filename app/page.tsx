@@ -13,6 +13,14 @@ import { SettingsModal } from '../components/SettingsModal'
 
 
 export default function Home() {
+  const getSettings = () => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('twinmind-settings')
+      return saved ? JSON.parse(saved) : { liveSuggestionContextWindow: 2000, detailedAnswerContextWindow: 6000 }
+    }
+    return { liveSuggestionContextWindow: 2000, detailedAnswerContextWindow: 6000 }
+  }
+
   const [showSettings, setShowSettings] = useState(false)
   const [transcript, setTranscript] = useState<Array<{ text: string, timestamp: Date }>>([])
   const [suggestions, setSuggestions] = useState<Array<{ batch: Array<{ preview: string, full: string }>, timestamp: Date }>>([])
@@ -51,7 +59,11 @@ export default function Home() {
 
         // Generate suggestions based on recent transcript
         const currentTranscript = [...transcript, newTranscriptLine]
-        const recentTranscript = currentTranscript.slice(-5).map((t: { text: string }) => t.text).join(' ')
+        const settings = getSettings()
+        const maxChars = (settings.liveSuggestionContextWindow || 2000) * 4
+        const fullCurrentText = currentTranscript.map(t => t.text).join(' ')
+        const recentTranscript = fullCurrentText.length > maxChars ? fullCurrentText.slice(-maxChars) : fullCurrentText
+
         const newSuggestions = await generateSuggestions(recentTranscript)
 
         if (newSuggestions && newSuggestions.length === 3) {
@@ -100,7 +112,11 @@ export default function Home() {
       return
     }
 
-    const recentTranscript = transcript.slice(-5).map((t: { text: string }) => t.text).join(' ')
+    const settings = getSettings()
+    const maxChars = (settings.liveSuggestionContextWindow || 2000) * 4
+    const fullText = transcript.map((t: { text: string }) => t.text).join(' ')
+    const recentTranscript = fullText.length > maxChars ? fullText.slice(-maxChars) : fullText
+
     console.log('Generating suggestions for recent transcript:', recentTranscript)
     const newSuggestions = await generateSuggestions(recentTranscript)
 
@@ -127,8 +143,12 @@ export default function Home() {
     setChat(prev => [...prev, userMessage])
 
     // Generate detailed response
+    const settings = getSettings()
+    const maxChars = (settings.detailedAnswerContextWindow || 6000) * 4
     const fullTranscript = transcript.map(t => t.text).join(' ')
-    const response = await generateChatResponse(suggestion.preview, fullTranscript)
+    const contextTranscript = fullTranscript.length > maxChars ? fullTranscript.slice(-maxChars) : fullTranscript
+
+    const response = await generateChatResponse(suggestion.preview, contextTranscript)
 
     if (response) {
       const assistantMessage = {
@@ -148,8 +168,12 @@ export default function Home() {
     }
     setChat(prev => [...prev, userMessage])
 
+    const settings = getSettings()
+    const maxChars = (settings.detailedAnswerContextWindow || 6000) * 4
     const fullTranscript = transcript.map(t => t.text).join(' ')
-    const response = await generateChatResponse(message, fullTranscript)
+    const contextTranscript = fullTranscript.length > maxChars ? fullTranscript.slice(-maxChars) : fullTranscript
+
+    const response = await generateChatResponse(message, contextTranscript)
 
     if (response) {
       const assistantMessage = {

@@ -6,7 +6,13 @@ export const useGroqAPI = () => {
   const getSettings = () => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('twinmind-settings')
-      return saved ? JSON.parse(saved) : { groqApiKey: '' }
+      return saved ? JSON.parse(saved) : {
+        groqApiKey: '',
+        liveSuggestionPrompt: '',
+        chatPrompt: '',
+        liveSuggestionContextWindow: 1000,
+        detailedAnswerContextWindow: 4000
+      }
     }
     return { groqApiKey: '' }
   }
@@ -75,11 +81,15 @@ export const useGroqAPI = () => {
     setIsLoading(true)
 
     try {
-      const prompt = `Based on the following meeting transcript, generate exactly 3 useful suggestions. Each suggestion should be:
+      const defaultPrompt = `Based on the following meeting transcript, generate exactly 3 useful suggestions. Each suggestion should be:
 - Comprehensive and actionable for preview.
 - Extremely contextually relevant precisely citing user content from what was just discussed in the meeting transcript.
 - Valuable even without clicking for details. Under no circumstances should you give short responses; quote user statements.
-- MUST have its preview start with EXACTLY one of these labels: "QUESTION TO ASK: ", "TALKING POINT: ", "ANSWER: ", or "FACT-CHECK: ".
+- MUST have its preview start with EXACTLY one of these labels: "QUESTION TO ASK: ", "TALKING POINT: ", "ANSWER: ", or "FACT-CHECK: ".`
+
+      const customPrompt = settings.liveSuggestionPrompt || defaultPrompt;
+
+      const fullPromptText = `${customPrompt}
 
 Recent transcript context:
 ${transcript}
@@ -110,7 +120,7 @@ Return strictly in the following JSON format:
             },
             {
               role: 'user',
-              content: prompt
+              content: fullPromptText
             }
           ],
           max_tokens: 2500,
@@ -168,14 +178,18 @@ Return strictly in the following JSON format:
     setIsLoading(true)
 
     try {
-      const prompt = `Based on the user's question and the full meeting transcript, provide a comprehensive and highly detailed response.
+      const defaultChatPrompt = `Based on the user's question and the full meeting transcript, provide a comprehensive and highly detailed response.
 
 CRITICAL RULES:
 - Include exact quotes and direct references to the "user content" from the transcript.
-- Do NOT give short answers. Your response must be comprehensive, thoughtful, and explicitly reference the specific details discussed in the meeting.
+- Do NOT give short answers. Your response must be comprehensive, thoughtful, and explicitly reference the specific details discussed in the meeting.`
+
+      const customChatPrompt = settings.chatPrompt || defaultChatPrompt;
+
+      const fullChatPrompt = `${customChatPrompt}
 
 User question: ${question}
-Full transcript: ${transcript}`
+Full transcript context: ${transcript}`
 
       console.log('Sending chat response request to Groq API...')
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -193,7 +207,7 @@ Full transcript: ${transcript}`
             },
             {
               role: 'user',
-              content: prompt
+              content: fullChatPrompt
             }
           ],
           max_tokens: 3000,
