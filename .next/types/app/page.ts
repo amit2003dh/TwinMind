@@ -1,4 +1,4 @@
-// File: C:\Users\dell\Documents\projects\TwinMind\app\page.tsx
+// File: C:\Users\dell\Documents\projects\Twin\TwinMind\app\page.tsx
 import * as entry from '../../../app/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

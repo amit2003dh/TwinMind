@@ -104,18 +104,7 @@ const useAudioCapture = () => {
       if (error instanceof Error) {
         if (error.name === 'NotReadableError') {
           console.error('Microphone is already in use by another application')
-          // Enable demo mode when microphone is in use
-          setIsRecording(true)
-          // Add a mock transcript after a short delay
-          setTimeout(() => {
-            const mockTranscript = {
-              text: "Demo mode: This is a mock transcription since the microphone is in use by another application. In a real scenario, this would be actual audio transcription.",
-              timestamp: new Date()
-            }
-            // We'll handle this in the main component
-            window.dispatchEvent(new CustomEvent('mockTranscript', { detail: mockTranscript }))
-          }, 1000)
-          throw new Error('Microphone is already in use. Demo mode enabled - you can still test suggestions and chat functionality.')
+          throw new Error('Microphone is already in use by another application. Please close the other application and try again.')
         } else if (error.name === 'NotAllowedError') {
           console.error('Microphone permission denied')
           throw new Error('Microphone permission denied. Please allow microphone access and try again.')
@@ -175,9 +164,10 @@ const useGroqAPI = () => {
 
     console.log('Starting transcription with audio blob size:', audioBlob.size, 'bytes')
 
-    if (!settings.groqApiKey) {
-      console.warn('No Groq API key provided, using mock transcription')
-      return "Mock transcription: This is a test transcription for demo purposes."
+    const apiKey = settings.groqApiKey || process.env.NEXT_PUBLIC_GROQ_API_KEY
+    if (!apiKey) {
+      console.error('No Groq API key provided. Please add one in settings or .env')
+      return null
     }
 
     setIsLoading(true)
@@ -193,7 +183,7 @@ const useGroqAPI = () => {
       const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${settings.groqApiKey}`
+          'Authorization': `Bearer ${apiKey}`
         },
         body: formData
       })
@@ -222,33 +212,30 @@ const useGroqAPI = () => {
 
     console.log('Generating suggestions for transcript:', transcript.substring(0, 100) + '...')
 
-    if (!settings.groqApiKey) {
-      console.warn('No Groq API key provided, using mock suggestions')
-      return [
-        { preview: "QUESTION TO ASK: What's your current p99 latency?", full: "Detailed answer about latency metrics and performance monitoring..." },
-        { preview: "TALKING POINT: Discord's sharding model: 2,500 guilds per shard, ~150k concurrent users each.", full: "Discord uses a sophisticated sharding approach to handle massive scale..." },
-        { preview: "FACT-CHECK: Slack's 2024 outage was a config push, not capacity - different problem.", full: "The Slack outage was indeed caused by a configuration change, not capacity issues..." }
-      ]
+    const apiKey = settings.groqApiKey || process.env.NEXT_PUBLIC_GROQ_API_KEY
+    if (!apiKey) {
+      console.error('No Groq API key provided. Please add one in settings or .env')
+      return null
     }
 
     setIsLoading(true)
 
     try {
       const prompt = `Based on the following meeting transcript, generate exactly 3 useful suggestions. Each suggestion should be:
-- Concise and actionable (under 50 characters for preview)
-- Varied in type (mix of questions to ask, talking points, fact-checks, clarifications)
-- Contextually relevant to what was just discussed
-- Valuable even without clicking for details
+- Comprehensive and actionable for preview.
+- Extremely contextually relevant precisely citing user content from what was just discussed in the meeting transcript.
+- Valuable even without clicking for details. Under no circumstances should you give short responses; quote user statements.
+- MUST have its preview start with EXACTLY one of these labels: "QUESTION TO ASK: ", "TALKING POINT: ", "ANSWER: ", or "FACT-CHECK: ".
 
 Recent transcript context:
 ${transcript}
 
-Return JSON format:
+Return strictly in the following JSON format:
 {
   "suggestions": [
     {
-      "preview": "Short preview text",
-      "full": "More detailed explanation of the suggestion and why it's relevant"
+      "preview": "LABEL: Detailed preview highlighting exact user content",
+      "full": "A comprehensive, multi-sentence response detailing the exact context, citing explicit user statements from the transcript. Do NOT leave short answers."
     }
   ]
 }`
@@ -257,7 +244,7 @@ Return JSON format:
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${settings.groqApiKey}`,
+          'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -272,7 +259,7 @@ Return JSON format:
               content: prompt
             }
           ],
-          max_tokens: 500,
+          max_tokens: 2500,
           temperature: 0.7
         })
       })
@@ -282,16 +269,18 @@ Return JSON format:
       if (!response.ok) {
         const errorText = await response.text()
         console.error('Suggestions API error:', response.status, errorText)
-        return [
-          { preview: "QUESTION TO ASK: What's your current p99 latency?", full: "Detailed answer about latency metrics and performance monitoring..." },
-          { preview: "TALKING POINT: Discord's sharding model: 2,500 guilds per shard, ~150k concurrent users each.", full: "Discord uses a sophisticated sharding approach to handle massive scale..." },
-          { preview: "FACT-CHECK: Slack's 2024 outage was a config push, not capacity - different problem.", full: "The Slack outage was indeed caused by a configuration change, not capacity issues..." }
-        ]
+        return null
       }
 
       const result = await response.json()
       console.log('Suggestions result:', result)
-      const content = result.choices[0].message.content
+
+      const choice = result.choices[0]
+      if (choice.finish_reason === 'length') {
+        alert(`Token limit reached! The suggestions response was cut off at ${result.usage?.completion_tokens || 'maximum'} tokens. Please raise your max_tokens limit to prevent JSON truncation.`)
+      }
+
+      const content = choice.message.content
 
       try {
         const parsed = JSON.parse(content)
@@ -299,19 +288,11 @@ Return JSON format:
         return parsed.suggestions || []
       } catch (parseError) {
         console.error('Failed to parse suggestions JSON:', parseError, 'Content:', content)
-        return [
-          { preview: "QUESTION TO ASK: What's your current p99 latency?", full: "Detailed answer about latency metrics and performance monitoring..." },
-          { preview: "TALKING POINT: Discord's sharding model: 2,500 guilds per shard, ~150k concurrent users each.", full: "Discord uses a sophisticated sharding approach to handle massive scale..." },
-          { preview: "FACT-CHECK: Slack's 2024 outage was a config push, not capacity - different problem.", full: "The Slack outage was indeed caused by a configuration change, not capacity issues..." }
-        ]
+        return null
       }
     } catch (error) {
       console.error('Suggestions generation error:', error)
-      return [
-        { preview: "QUESTION TO ASK: What's your current p99 latency?", full: "Detailed answer about latency metrics and performance monitoring..." },
-        { preview: "TALKING POINT: Discord's sharding model: 2,500 guilds per shard, ~150k concurrent users each.", full: "Discord uses a sophisticated sharding approach to handle massive scale..." },
-        { preview: "FACT-CHECK: Slack's 2024 outage was a config push, not capacity - different problem.", full: "The Slack outage was indeed caused by a configuration change, not capacity issues..." }
-      ]
+      return null
     } finally {
       setIsLoading(false)
     }
@@ -323,28 +304,23 @@ Return JSON format:
     console.log('Generating chat response for question:', question)
     console.log('Transcript length:', transcript.length, 'characters')
 
-    if (!settings.groqApiKey) {
-      console.warn('No Groq API key provided, using mock response')
-      return `Detailed answer to: "${question}"
-
-This is a longer-form prompt with full transcript context. The response would normally be generated by the Llama 3 70B model using the complete transcript to provide contextually relevant, detailed answers to the user's question.
-
-For this demo, we're showing how the interface would work with real API integration. When you provide a valid Groq API key in the settings, the system will use:
-- Whisper Large V3 for audio transcription
-- Llama 3 70B for intelligent suggestions and detailed responses
-
-The full transcript context allows the AI to provide more accurate and relevant answers based on the entire conversation history.`
+    const apiKey = settings.groqApiKey || process.env.NEXT_PUBLIC_GROQ_API_KEY
+    if (!apiKey) {
+      console.error('No Groq API key provided. Please add one in settings or .env')
+      return `Error: No Groq API key provided. Please add one in settings or .env.`
     }
 
     setIsLoading(true)
 
     try {
-      const prompt = `Based on the user's question and the full meeting transcript, provide a comprehensive and helpful response. Consider the context of the conversation and provide actionable insights.
+      const prompt = `Based on the user's question and the full meeting transcript, provide a comprehensive and highly detailed response.
+
+CRITICAL RULES:
+- Include exact quotes and direct references to the "user content" from the transcript.
+- Do NOT give short answers. Your response must be comprehensive, thoughtful, and explicitly reference the specific details discussed in the meeting.
 
 User question: ${question}
-Full transcript: ${transcript}
-
-Provide a detailed, thoughtful response that addresses the question directly while considering the broader context of the meeting.`
+Full transcript: ${transcript}`
 
       console.log('Sending chat response request to Groq API...')
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -365,7 +341,7 @@ Provide a detailed, thoughtful response that addresses the question directly whi
               content: prompt
             }
           ],
-          max_tokens: 1000,
+          max_tokens: 3000,
           temperature: 0.7
         })
       })
@@ -375,16 +351,18 @@ Provide a detailed, thoughtful response that addresses the question directly whi
       if (!response.ok) {
         const errorText = await response.text()
         console.error('Chat API error:', response.status, errorText)
-        return `Detailed answer to: "${question}"
-
-API Error: ${response.status} - ${errorText}
-
-This is a mock response showing the interface functionality. The real Llama 3 70B model would provide a detailed, context-aware response based on the full transcript.`
+        return `API Error: ${response.status} - ${errorText}`
       }
 
       const result = await response.json()
       console.log('Chat response result:', result)
-      const content = result.choices[0].message.content
+
+      const choice = result.choices[0]
+      if (choice.finish_reason === 'length') {
+        alert(`Token limit reached! The chat response was cut off at ${result.usage?.completion_tokens || 'maximum'} tokens. Please raise your max_tokens limit in the code.`)
+      }
+
+      const content = choice.message.content
 
       if (!content.includes('Detailed answer to:')) {
         return `Detailed answer to: "${question}"\n\n${content}`
@@ -392,11 +370,7 @@ This is a mock response showing the interface functionality. The real Llama 3 70
       return content
     } catch (error) {
       console.error('Chat response error:', error)
-      return `Detailed answer to: "${question}"
-
-Network Error: ${(error as Error).message}
-
-This is a mock response showing the interface functionality. The real Llama 3 70B model would provide a detailed, context-aware response based on the full transcript.`
+      return `Network Error: ${(error as Error).message}`
     } finally {
       setIsLoading(false)
     }
@@ -480,19 +454,19 @@ const SuggestionsPanel = ({ suggestions, onSuggestionClick, isRecording, onManua
     let badgeColor = 'bg-gray-500/10 text-gray-400 border-gray-500/20';
 
     if (preview.toUpperCase().startsWith('QUESTION TO ASK')) {
-      type = 'QUESTION TO ASK';
+      type = 'Question to ask';
       text = preview.replace(/^QUESTION TO ASK:\s*/i, '');
       badgeColor = 'bg-blue-500/10 text-blue-400 border-blue-500/20';
     } else if (preview.toUpperCase().startsWith('TALKING POINT')) {
-      type = 'TALKING POINT';
+      type = 'Talking point';
       text = preview.replace(/^TALKING POINT:\s*/i, '');
       badgeColor = 'bg-purple-500/10 text-purple-400 border-purple-500/20';
     } else if (preview.toUpperCase().startsWith('FACT-CHECK')) {
-      type = 'FACT-CHECK';
+      type = 'Fact-check';
       text = preview.replace(/^FACT-CHECK:\s*/i, '');
       badgeColor = 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
     } else if (preview.toUpperCase().startsWith('ANSWER')) {
-      type = 'ANSWER';
+      type = 'Answer';
       text = preview.replace(/^ANSWER:\s*/i, '');
       badgeColor = 'bg-green-500/10 text-green-400 border-green-500/20';
     } else if (preview.includes(':')) {
@@ -504,13 +478,27 @@ const SuggestionsPanel = ({ suggestions, onSuggestionClick, isRecording, onManua
     return { type, text, badgeColor };
   };
 
+  const [countdown, setCountdown] = useState(30);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (isRecording) {
+      timer = setInterval(() => {
+        setCountdown((prev) => (prev > 0 ? prev - 1 : 30));
+      }, 1000);
+    } else {
+      setCountdown(30);
+    }
+    return () => clearInterval(timer);
+  }, [isRecording]);
+
   return (
     <div className="h-full flex flex-col bg-[#111520] border-r border-[#1e293b]">
       <div className="p-5">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">2. Live Suggestions</h2>
-          <span className="text-xs font-semibold tracking-wider text-slate-400 uppercase">
-            {suggestions.length} {suggestions.length === 1 ? 'BATCH' : 'BATCHES'}
+          <span className="text-xs font-semibold tracking-wider text-slate-400">
+            {suggestions.length} {suggestions.length === 1 ? 'batch' : 'batches'}
           </span>
         </div>
         <div className="flex items-center space-x-4 mb-6">
@@ -522,7 +510,7 @@ const SuggestionsPanel = ({ suggestions, onSuggestionClick, isRecording, onManua
             <span>Reload suggestions</span>
           </button>
           <div className="text-sm text-slate-500">
-            auto-refresh in 20s
+            auto-refresh in {countdown}s
           </div>
         </div>
         <div className="p-4 rounded-xl border border-[#1e293b] bg-[#161b26] text-sm text-slate-400 leading-relaxed">
@@ -538,8 +526,8 @@ const SuggestionsPanel = ({ suggestions, onSuggestionClick, isRecording, onManua
                 <div key={batchIndex} className={`mb-8 ${!isLatest ? 'opacity-50' : ''}`}>
                   <div className="flex items-center justify-center mb-6">
                     <div className="h-px bg-[#1e293b] flex-1"></div>
-                    <div className="px-4 text-xs tracking-widest text-slate-500 uppercase font-semibold">
-                      BATCH {suggestions.length - batchIndex} · {batch.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+                    <div className="px-4 text-xs tracking-widest text-slate-500 font-semibold">
+                      — Batch {suggestions.length - batchIndex} · {batch.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })} —
                     </div>
                     <div className="h-px bg-[#1e293b] flex-1"></div>
                   </div>
@@ -776,19 +764,7 @@ export default function Home() {
   const { isRecording, startRecording, stopRecording, audioChunks } = useAudioCapture()
   const { transcribeAudio, generateSuggestions, generateChatResponse } = useGroqAPI()
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout
 
-    if (isRecording) {
-      interval = setInterval(async () => {
-        await processAudioChunk()
-      }, 30000) // Process every 30 seconds
-    }
-
-    return () => {
-      if (interval) clearInterval(interval)
-    }
-  }, [isRecording])
 
   useEffect(() => {
     // Process new audio chunks immediately when they arrive
@@ -797,34 +773,7 @@ export default function Home() {
     }
   }, [audioChunks])
 
-  useEffect(() => {
-    // Listen for mock transcript events (demo mode)
-    const handleMockTranscript = (event: any) => {
-      const mockTranscript = event.detail
-      setTranscript(prev => [...prev, mockTranscript])
-      console.log('Demo mode: Mock transcript added')
 
-      // Generate suggestions based on mock transcript
-      const recentTranscript = mockTranscript.text
-      generateSuggestions(recentTranscript).then(newSuggestions => {
-        if (newSuggestions && newSuggestions.length === 3) {
-          setSuggestions(prev => [{
-            batch: newSuggestions.map(s => ({
-              preview: s.preview,
-              full: s.full
-            })),
-            timestamp: new Date()
-          }, ...prev])
-          console.log('Demo mode: Mock suggestions added')
-        }
-      })
-    }
-
-    window.addEventListener('mockTranscript', handleMockTranscript)
-    return () => {
-      window.removeEventListener('mockTranscript', handleMockTranscript)
-    }
-  }, [])
 
   const processAudioChunk = async () => {
     if (audioChunks.length === 0) return
@@ -844,7 +793,8 @@ export default function Home() {
         console.log('Added transcript line:', transcription)
 
         // Generate suggestions based on recent transcript
-        const recentTranscript = transcript.slice(-5).map(t => t.text).join(' ')
+        const currentTranscript = [...transcript, newTranscriptLine]
+        const recentTranscript = currentTranscript.slice(-5).map((t: { text: string }) => t.text).join(' ')
         const newSuggestions = await generateSuggestions(recentTranscript)
 
         if (newSuggestions && newSuggestions.length === 3) {
@@ -888,17 +838,13 @@ export default function Home() {
   const handleManualRefresh = async () => {
     console.log('Manual refresh triggered')
 
-    // Add mock transcript for testing
-    const mockTranscript = {
-      text: "So we're talking about how to scale our backend to handle a million concurrent users. The main bottleneck right now is the websocket connections and how we're handling state in memory.",
-      timestamp: new Date()
+    if (transcript.length === 0) {
+      console.log('No transcript available to generate suggestions from')
+      return
     }
-    setTranscript(prev => [...prev, mockTranscript])
-    console.log('Added mock transcript for testing')
 
-    // Generate suggestions based on mock transcript
-    const recentTranscript = [mockTranscript].map(t => t.text).join(' ')
-    console.log('Generating suggestions for mock transcript:', recentTranscript)
+    const recentTranscript = transcript.slice(-5).map((t: { text: string }) => t.text).join(' ')
+    console.log('Generating suggestions for recent transcript:', recentTranscript)
     const newSuggestions = await generateSuggestions(recentTranscript)
 
     if (newSuggestions && newSuggestions.length === 3) {

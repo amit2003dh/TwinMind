@@ -1,4 +1,4 @@
-// File: C:\Users\dell\Documents\projects\TwinMind\app\layout.tsx
+// File: C:\Users\dell\Documents\projects\Twin\TwinMind\app\layout.tsx
 import * as entry from '../../../app/layout.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
