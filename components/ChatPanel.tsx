@@ -1,36 +1,8 @@
-'use client'
-
 import { useState, useRef, useEffect } from 'react'
-import { Send } from 'lucide-react'
 
-interface ChatMessage {
-  role: 'user' | 'assistant'
-  content: string
-  timestamp: Date
-}
-
-interface ChatPanelProps {
-  chat: ChatMessage[]
-  onSendMessage: (message: string) => void
-}
-
-export default function ChatPanel({ chat, onSendMessage }: ChatPanelProps) {
+export const ChatPanel = ({ chat, onSendMessage }: any) => {
   const [inputMessage, setInputMessage] = useState('')
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
-  }, [chat])
-
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
-      minute: '2-digit'
-    })
-  }
+  const chatEndRef = useRef<HTMLDivElement>(null)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,61 +12,70 @@ export default function ChatPanel({ chat, onSendMessage }: ChatPanelProps) {
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSubmit(e as any)
-    }
-  }
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chat])
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="bg-white border-b border-gray-200 px-4 py-3">
-        <h2 className="text-lg font-semibold text-gray-900">Chat</h2>
+    <div className="h-full flex flex-col bg-[#111520]">
+      <div className="p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">3. Chat (Detailed Answers)</h2>
+          <span className="text-xs font-semibold tracking-wider text-slate-400 uppercase">SESSION-ONLY</span>
+        </div>
       </div>
-      
-      <div 
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto p-4 bg-gray-50"
-      >
-        {chat.length === 0 ? (
-          <div className="text-gray-500 text-center mt-8">
-            Click on suggestions or type a question to start chatting...
+      <div className="flex-1 overflow-y-auto px-5 pb-5">
+        {chat.length === 0 ? null : (
+          <div className="space-y-6">
+            {chat.map((message: any, index: number) => (
+              <div
+                key={index}
+                className="flex flex-col"
+              >
+                <div className="text-[11px] tracking-wider text-slate-500 font-semibold mb-2 uppercase">
+                  {message.role === 'user' ? 'YOU' : 'ASSISTANT'}
+                </div>
+                <div className={`p-4 rounded-xl ${message.role === 'user'
+                  ? 'bg-[#1e293b] border border-[#2a364a] text-slate-300'
+                  : 'bg-[#161b26] border border-[#2a364a] text-slate-300'
+                  }`}>
+                  <div className="text-[14px] leading-relaxed whitespace-pre-wrap">
+                    {message.content.includes('Detailed answer to:')
+                      ? (
+                        <>
+                          <div className="text-slate-400 font-medium mb-3 italic">
+                            {message.content.split('\n').find((l: string) => l.startsWith('Detailed answer to:'))}
+                          </div>
+                          <div>
+                            {message.content.split('\n').filter((l: string) => !l.startsWith('Detailed answer to:')).join('\n').trim()}
+                          </div>
+                        </>
+                      )
+                      : message.content
+                    }
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div ref={chatEndRef} />
           </div>
-        ) : (
-          chat.map((message, index) => (
-            <div
-              key={index}
-              className={`chat-message ${message.role}`}
-            >
-              <div className="text-xs text-gray-500 mb-1">
-                {formatTime(message.timestamp)}
-              </div>
-              <div className="text-gray-800 whitespace-pre-wrap">
-                {message.content}
-              </div>
-            </div>
-          ))
         )}
       </div>
-
-      <div className="bg-white border-t border-gray-200 p-4">
+      <div className="p-4 bg-[#0f1219]">
         <form onSubmit={handleSubmit} className="flex space-x-2">
           <input
-            ref={inputRef}
             type="text"
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type your question..."
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="Ask anything..."
+            className="flex-1 px-4 py-3 bg-[#1e293b] border border-[#2a364a] rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-200 placeholder-slate-500"
           />
           <button
             type="submit"
             disabled={!inputMessage.trim()}
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+            className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-500 disabled:bg-[#1e293b] disabled:text-slate-500 disabled:cursor-not-allowed transition-colors"
           >
-            <Send className="w-4 h-4" />
+            Send
           </button>
         </form>
       </div>
