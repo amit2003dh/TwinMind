@@ -167,6 +167,7 @@ const useGroqAPI = () => {
     const apiKey = settings.groqApiKey || process.env.NEXT_PUBLIC_GROQ_API_KEY
     if (!apiKey) {
       console.error('No Groq API key provided. Please add one in settings or .env')
+      alert('Error: No Groq API key is currently configured. Please add one in the Settings menu (top right) or your local .env file before running features.')
       return null
     }
 
@@ -215,6 +216,7 @@ const useGroqAPI = () => {
     const apiKey = settings.groqApiKey || process.env.NEXT_PUBLIC_GROQ_API_KEY
     if (!apiKey) {
       console.error('No Groq API key provided. Please add one in settings or .env')
+      alert('Error: No Groq API key is currently configured. Please add one in the Settings menu (top right) or your local .env file before running features.')
       return null
     }
 
@@ -307,6 +309,7 @@ Return strictly in the following JSON format:
     const apiKey = settings.groqApiKey || process.env.NEXT_PUBLIC_GROQ_API_KEY
     if (!apiKey) {
       console.error('No Groq API key provided. Please add one in settings or .env')
+      alert('Error: No Groq API key is currently configured. Please add one in the Settings menu (top right) or your local .env file before running features.')
       return `Error: No Groq API key provided. Please add one in settings or .env.`
     }
 
